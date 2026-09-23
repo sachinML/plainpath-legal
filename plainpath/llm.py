@@ -11,6 +11,24 @@ import urllib.request
 from plainpath.config import Settings
 from plainpath.types import LLMResult
 
+# Groq retired llama-3.1-8b-instant for free/developer keys on 2026-08-16
+# and now lists it as enterprise-only. openai/gpt-oss-20b is the replacement.
+GROQ_FALLBACK_MODELS: tuple[str, ...] = (
+    "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",
+)
+
+_RETRYABLE_HTTP = {400, 403, 404}
+
+
+class ProviderHTTPError(Exception):
+    """HTTP failure from a language provider, with a sanitized public reason."""
+
+    def __init__(self, code: int, reason: str) -> None:
+        self.code = code
+        self.reason = reason
+        super().__init__(reason)
+
 
 class LLMClient(Protocol):
     """Minimal chat interface used by the pipeline."""
@@ -30,11 +48,19 @@ def _reason(error: Exception) -> tuple[str, str]:
     kind = type(error).__name__
     if isinstance(error, TimeoutError):
         return kind, "The request timed out."
+    if isinstance(error, ProviderHTTPError):
+        return "HTTPError", error.reason
     if isinstance(error, urllib.error.HTTPError):
         return kind, f"The provider returned HTTP {error.code}."
     if isinstance(error, urllib.error.URLError):
         return kind, "Could not connect to the language-model provider."
     return kind, f"Unexpected error ({kind})."
+
+
+def _retryable_model_error(error: Exception) -> bool:
+    """True when another model ID on the same key is worth trying."""
+    code = getattr(error, "code", None)
+    return code in _RETRYABLE_HTTP
 
 
 def fallback_text(provider: str, error: Exception) -> str:
@@ -116,7 +142,7 @@ class GeminiLLM:
             except Exception as exc:  # noqa: BLE001 — must not crash the demo
                 last_error = exc
                 kind, _ = _reason(exc)
-                if kind == "HTTPError" and getattr(exc, "code", None) == 404:
+                if _retryable_model_error(exc) and getattr(exc, "code", None) == 404:
                     continue
                 return LLMResult(
                     text=fallback_text(last_name, exc),
@@ -157,12 +183,14 @@ class OpenAICompatibleLLM:
         api_key: str,
         model: str,
         timeout_s: float,
+        fallback_models: tuple[str, ...] = (),
     ) -> None:
         self._label = provider_label
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
         self._timeout_s = timeout_s
+        self._fallback_models = fallback_models
 
     def name(self) -> str:
         return f"{self._label}:{self._model}"
@@ -171,33 +199,52 @@ class OpenAICompatibleLLM:
         return bool(self._api_key)
 
     def complete(self, *, system: str, user: str, temperature: float = 0.2) -> LLMResult:
+        models = (self._model,) + tuple(m for m in self._fallback_models if m != self._model)
+        last_error: Exception | None = None
+        last_name = self.name()
+        for index, model in enumerate(models):
+            last_name = f"{self._label}:{model}"
+            try:
+                text = self._call(model=model, system=system, user=user, temperature=temperature)
+                if text.strip():
+                    return LLMResult(text=text.strip(), provider=last_name, live=True, degraded=False)
+                last_error = RuntimeError("empty model response")
+            except Exception as exc:  # noqa: BLE001 — must not crash the demo
+                last_error = exc
+                if _retryable_model_error(exc) and index < len(models) - 1:
+                    continue
+                kind, _ = _reason(exc)
+                return LLMResult(
+                    text=fallback_text(last_name, exc),
+                    provider=last_name,
+                    live=True,
+                    degraded=True,
+                    error_kind=kind,
+                )
+        if last_error is None:
+            last_error = RuntimeError("no model attempted")
+        kind, _ = _reason(last_error)
+        return LLMResult(
+            text=fallback_text(last_name, last_error),
+            provider=last_name,
+            live=True,
+            degraded=True,
+            error_kind=kind,
+        )
+
+    def _call(self, *, model: str, system: str, user: str, temperature: float) -> str:
         url = f"{self._base_url}/chat/completions"
         payload = {
-            "model": self._model,
+            "model": model,
             "temperature": float(temperature),
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-        }
-        try:
-            data = _post_json(url, payload, timeout_s=self._timeout_s, headers=headers)
-            text = _openai_text(data)
-            if not text.strip():
-                raise RuntimeError("empty model response")
-            return LLMResult(text=text.strip(), provider=self.name(), live=True, degraded=False)
-        except Exception as exc:  # noqa: BLE001
-            kind, _ = _reason(exc)
-            return LLMResult(
-                text=fallback_text(self.name(), exc),
-                provider=self.name(),
-                live=True,
-                degraded=True,
-                error_kind=kind,
-            )
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        data = _post_json(url, payload, timeout_s=self._timeout_s, headers=headers)
+        return _openai_text(data)
 
 
 class OllamaLLM:
@@ -261,13 +308,7 @@ def build_llm(settings: Settings) -> LLMClient:
     if provider == "groq":
         if not settings.groq_api_key:
             return MockLLM()
-        return OpenAICompatibleLLM(
-            provider_label="groq",
-            base_url=settings.groq_base_url,
-            api_key=settings.groq_api_key,
-            model=settings.groq_model,
-            timeout_s=settings.llm_timeout_seconds,
-        )
+        return _groq_client(settings)
     if provider == "openai":
         if not settings.openai_api_key:
             return MockLLM()
@@ -293,13 +334,7 @@ def build_llm(settings: Settings) -> LLMClient:
             timeout_s=settings.llm_timeout_seconds,
         )
     if settings.groq_api_key:
-        return OpenAICompatibleLLM(
-            provider_label="groq",
-            base_url=settings.groq_base_url,
-            api_key=settings.groq_api_key,
-            model=settings.groq_model,
-            timeout_s=settings.llm_timeout_seconds,
-        )
+        return _groq_client(settings)
     if settings.openai_api_key:
         return OpenAICompatibleLLM(
             provider_label="openai-compatible",
@@ -318,6 +353,57 @@ def build_llm(settings: Settings) -> LLMClient:
     return MockLLM()
 
 
+def _groq_client(settings: Settings) -> OpenAICompatibleLLM:
+    return OpenAICompatibleLLM(
+        provider_label="groq",
+        base_url=settings.groq_base_url,
+        api_key=settings.groq_api_key or "",
+        model=settings.groq_model,
+        timeout_s=settings.llm_timeout_seconds,
+        fallback_models=GROQ_FALLBACK_MODELS,
+    )
+
+
+def _extract_provider_message(body: str) -> str:
+    """Pull a short public error string out of a JSON body. Never return secrets."""
+    message = ""
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        err = parsed.get("error")
+        if isinstance(err, dict) and isinstance(err.get("message"), str):
+            message = err["message"].strip()
+        elif isinstance(err, str):
+            message = err.strip()
+        elif isinstance(parsed.get("message"), str):
+            message = parsed["message"].strip()
+    if any(token in message.lower() for token in ("bearer", "api key", "gsk_", "sk-")):
+        return ""
+    if len(message) > 240:
+        return message[:240] + "…"
+    return message
+
+
+def _provider_http_error(code: int, body: str) -> ProviderHTTPError:
+    message = _extract_provider_message(body)
+    if code == 401:
+        reason = "The provider rejected the API key (HTTP 401)."
+    elif code == 403:
+        reason = message or (
+            "The provider returned HTTP 403. On Groq free/developer keys this usually "
+            "means the model was retired (llama-3.1-8b-instant shut down 2026-08-16)."
+        )
+    elif code == 404:
+        reason = message or "The provider returned HTTP 404 (unknown model or path)."
+    elif code == 429:
+        reason = "The provider rate-limited the request (HTTP 429). Try again in a moment."
+    else:
+        reason = message or f"The provider returned HTTP {code}."
+    return ProviderHTTPError(code, reason)
+
+
 def _post_json(
     url: str,
     payload: dict,
@@ -326,18 +412,22 @@ def _post_json(
     headers: dict[str, str],
 ) -> dict:
     body = json.dumps(payload).encode("utf-8")
-    req_headers = {"Content-Type": "application/json", **headers}
+    req_headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "PlainPath/1.0",
+        **headers,
+    }
     request = urllib.request.Request(url, data=body, headers=req_headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:
             raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as error:
-        # Drain the body so the socket is not leaked, then re-raise.
+        raw_error = ""
         try:
-            error.read()
+            raw_error = error.read().decode("utf-8", errors="replace")
         except Exception:
-            pass
-        raise
+            raw_error = ""
+        raise _provider_http_error(error.code, raw_error) from error
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as error:

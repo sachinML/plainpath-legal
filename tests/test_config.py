@@ -39,6 +39,14 @@ class TestConfig(unittest.TestCase):
             else:
                 os.environ["LLM_TIMEOUT_SECONDS"] = old
 
+    def test_default_groq_model_is_current_free_tier(self) -> None:
+        old = os.environ.pop("GROQ_MODEL", None)
+        try:
+            self.assertEqual(Settings().groq_model, "openai/gpt-oss-20b")
+        finally:
+            if old is not None:
+                os.environ["GROQ_MODEL"] = old
+
 
 if __name__ == "__main__":
     unittest.main()

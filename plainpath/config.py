@@ -63,7 +63,7 @@ class Settings:
     gemini_model: str = field(default_factory=_env_factory("GEMINI_MODEL", "gemini-2.5-flash"))
 
     groq_api_key: str | None = field(default_factory=_secret_factory("GROQ_API_KEY"))
-    groq_model: str = field(default_factory=_env_factory("GROQ_MODEL", "llama-3.1-8b-instant"))
+    groq_model: str = field(default_factory=_env_factory("GROQ_MODEL", "openai/gpt-oss-20b"))
     groq_base_url: str = field(
         default_factory=_env_factory("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
     )
