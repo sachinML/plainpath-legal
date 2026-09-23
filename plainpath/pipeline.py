@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from functools import lru_cache
 
 from plainpath.brief import as_persona_id, build_brief, persona_from_id
 from plainpath.clauses import detect_clauses
@@ -70,6 +71,7 @@ def build_fact_sheet(text: str, *, today: date, persona_id: str) -> FactSheet:
     )
 
 
+@lru_cache(maxsize=32)
 def analyze_document(
     text: str,
     *,
@@ -77,7 +79,7 @@ def analyze_document(
     persona_id: str,
     source_name: str = "Document",
 ) -> Analysis:
-    """Facts + routed next steps + briefing pack."""
+    """Facts + routed next steps + briefing pack. Cached per (text, as-of, role)."""
     pid = as_persona_id(persona_id)
     facts = build_fact_sheet(text, today=today, persona_id=pid)
     steps = route_next_steps(facts, pid)
@@ -159,6 +161,7 @@ def narrate_lawyer_questions(
     return client.complete(system=system, user=user)
 
 
+@lru_cache(maxsize=16)
 def compare_texts(text_a: str, text_b: str) -> CompareReport:
-    """Public compare entry point."""
+    """Public compare entry point. Cached per document pair."""
     return compare_documents(text_a, text_b)

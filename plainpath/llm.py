@@ -162,13 +162,18 @@ class GeminiLLM:
         )
 
     def _call(self, *, model: str, system: str, user: str, temperature: float) -> str:
-        url = f"{self._base_url}/models/{model}:generateContent?key={self._api_key}"
+        url = f"{self._base_url}/models/{model}:generateContent"
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user}]}],
             "generationConfig": {"temperature": float(temperature)},
         }
-        data = _post_json(url, payload, timeout_s=self._timeout_s, headers={})
+        data = _post_json(
+            url,
+            payload,
+            timeout_s=self._timeout_s,
+            headers={"x-goog-api-key": self._api_key},
+        )
         return _gemini_text(data)
 
 

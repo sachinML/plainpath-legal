@@ -13,6 +13,28 @@ a:focus, button:focus, input:focus, textarea:focus, select:focus,
 }
 .stApp { color: #1A1A1A; }
 .status-text { font-weight: 650; }
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  background: #000000;
+  color: #FFFFFF;
+  padding: 0.5rem 0.75rem;
+  z-index: 10000;
+  font-weight: 700;
+}
+.skip-link:focus { top: 0.5rem; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 </style>
 """
 
@@ -44,13 +66,16 @@ a:focus, button:focus, input:focus, textarea:focus, select:focus,
 
 LARGE_TEXT_CSS = """
 <style>
-html, body, .stApp, p, li, label, span, div, input, textarea, button {
+[data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] li,
+[data-testid="stAppViewContainer"] label,
+[data-testid="stMarkdownContainer"] {
   font-size: 1.22rem !important;
   line-height: 1.55 !important;
 }
-h1 { font-size: 2rem !important; }
-h2 { font-size: 1.6rem !important; }
-h3 { font-size: 1.35rem !important; }
+[data-testid="stAppViewContainer"] h1 { font-size: 2rem !important; }
+[data-testid="stAppViewContainer"] h2 { font-size: 1.6rem !important; }
+[data-testid="stAppViewContainer"] h3 { font-size: 1.35rem !important; }
 </style>
 """
 
@@ -75,8 +100,9 @@ DOMAIN_A11Y_BLURB = (
 )
 
 UI_A11Y_BLURB = (
-    "Interface accessibility: visible keyboard focus outlines on every control; optional "
-    "high-contrast and large-text modes; status is always text (for example "
-    "'High · Automatic renewal'), never color alone; buttons and toggles have visible "
-    "word labels, not icons-only; default theme targets readable contrast on cream and ink."
+    "Interface accessibility: skip link to the document; visible keyboard focus outlines "
+    "on every control; optional high-contrast and large-text modes; status is always text "
+    "(for example 'High · Automatic renewal'), never color alone; buttons and toggles have "
+    "visible word labels, not icons-only; language of the explanation is announced; default "
+    "theme targets readable contrast on cream and ink."
 )

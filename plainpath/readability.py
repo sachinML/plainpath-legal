@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 
 _VOWELS = set("aeiouy")
@@ -39,6 +40,7 @@ def count_syllables(word: str) -> int:
     return max(1, syllables)
 
 
+@lru_cache(maxsize=32)
 def flesch_scores(text: str) -> tuple[float, float]:
     """
     Return (reading_ease, grade_level) for `text`.

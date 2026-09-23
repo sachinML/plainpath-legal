@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
+from functools import lru_cache
 
 from plainpath.clauses import clause_titles_by_kind, detect_clauses
 from plainpath.extract import classify_document, extract_money
 from plainpath.types import AlignedClause, ClauseHit, CompareReport, MoneyMismatch, MoneyTerm
 
 
+@lru_cache(maxsize=16)
 def compare_documents(text_a: str, text_b: str) -> CompareReport:
     """Align clause families and flag numeric mismatches between two texts."""
     type_a, _ = classify_document(text_a)

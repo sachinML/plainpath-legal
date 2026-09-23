@@ -42,6 +42,15 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(client.name(), "mock")
         self.assertFalse(client.is_live())
 
+    def test_analyze_document_cache_hits_on_repeat(self) -> None:
+        analyze_document.cache_clear()
+        text = load_sample("Harborline employment agreement")
+        today = date(2026, 1, 20)
+        analyze_document(text, today=today, persona_id="worker")
+        analyze_document(text, today=today, persona_id="worker")
+        self.assertGreaterEqual(analyze_document.cache_info().hits, 1)
+        analyze_document.cache_clear()
+
 
 if __name__ == "__main__":
     unittest.main()

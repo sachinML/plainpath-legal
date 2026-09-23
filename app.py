@@ -9,7 +9,7 @@ import streamlit as st
 from plainpath.a11y import DOMAIN_A11Y_BLURB, UI_A11Y_BLURB, css_bundle
 from plainpath.brief import brief_to_markdown
 from plainpath.config import get_settings
-from plainpath.documents import bytes_to_text
+from plainpath.documents import MAX_DOC_CHARS, bytes_to_text, clip_text
 from plainpath.extract import parse_today
 from plainpath.llm import build_llm, provider_status
 from plainpath.pipeline import (
@@ -23,7 +23,10 @@ from plainpath.pipeline import (
 )
 from plainpath.readability import ease_label
 from plainpath.samples import list_samples, load_sample, load_sample_pair
+from plainpath.sanitize import safe_markdown
 from plainpath.types import DISCLAIMER, PERSONAS, Analysis, Literacy
+
+_LANGUAGE_CODES = {"English": "en", "Spanish": "es", "Hindi": "hi"}
 
 st.set_page_config(page_title="PlainPath — legal documents in two lanes", layout="wide")
 
@@ -54,9 +57,9 @@ def _status_words(level: str) -> str:
 
 def _show_llm_result(result) -> None:
     if result.degraded:
-        st.warning(result.text)
+        st.warning(safe_markdown(result.text))
         return
-    st.markdown(result.text)
+    st.markdown(safe_markdown(result.text))
 
 
 def main() -> None:
@@ -123,7 +126,16 @@ def main() -> None:
             st.session_state.llm_client = build_llm(get_settings())
             st.rerun()
 
-    st.markdown(css_bundle(high_contrast=high_contrast, large_text=large_text), unsafe_allow_html=True)
+    st.html(css_bundle(high_contrast=high_contrast, large_text=large_text))
+    lang_code = _LANGUAGE_CODES.get(language, "en")
+    st.html(
+        f'<a class="skip-link" href="#plainpath-main">Skip to document</a>'
+        f'<div lang="{lang_code}">'
+        f'<span class="visually-hidden" role="status">'
+        f"Explanation language: {language}. "
+        f"{'Live language model connected.' if status.live else 'Language model is not live. Facts still run locally.'}"
+        f"</span></div>"
+    )
 
     st.title("PlainPath")
     st.subheader("See through legal documents. Facts stay on this device. Language comes from a live model.")
@@ -140,6 +152,8 @@ def main() -> None:
         "only to explain those facts in your role, reading style, and language. "
         "The model is told not to invent numbers."
     )
+
+    st.html(f'<div id="plainpath-main" lang="{lang_code}" tabindex="-1"></div>')
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -188,12 +202,32 @@ def main() -> None:
         _footer()
         return
 
-    analysis = analyze_document(
+    doc_a, clipped_a = clip_text(doc_a)
+    if clipped_a:
+        st.info(
+            f"Lane A is using the first {MAX_DOC_CHARS:,} characters so extraction stays "
+            "linear-time on each rerun."
+        )
+    if doc_b.strip():
+        doc_b, clipped_b = clip_text(doc_b)
+        if clipped_b:
+            st.info(f"Document B was clipped to {MAX_DOC_CHARS:,} characters.")
+
+    analysis_key = (
         doc_a,
-        today=as_of,
-        persona_id=persona.id,
-        source_name=st.session_state.get("doc_a_name", "Document A"),
+        as_of.isoformat(),
+        persona.id,
+        st.session_state.get("doc_a_name", "Document A"),
     )
+    if st.session_state.get("_analysis_key") != analysis_key:
+        st.session_state._analysis = analyze_document(
+            doc_a,
+            today=as_of,
+            persona_id=persona.id,
+            source_name=st.session_state.get("doc_a_name", "Document A"),
+        )
+        st.session_state._analysis_key = analysis_key
+    analysis = st.session_state._analysis
     literacy = _literacy(literacy_raw)
 
     tabs = st.tabs(

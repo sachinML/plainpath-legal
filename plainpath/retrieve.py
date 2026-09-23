@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 
 from plainpath.types import RetrievedChunk
@@ -34,6 +35,7 @@ _STOP = {
 }
 
 
+@lru_cache(maxsize=16)
 def chunk_document(text: str, max_chars: int = 900) -> tuple[RetrievedChunk, ...]:
     """Split on blank lines, then pack short paragraphs into bounded chunks."""
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]

@@ -87,7 +87,7 @@ On Streamlit Community Cloud, put the same names under **App settings → Secret
 
 - Unit tests cover extraction, clause flags, Gap Watch, risk math, compare mismatches, retrieval relevance, next-step routing, config `default_factory` env rereads, prompt grounding, and **LLM graceful degradation** (client pointed at `http://127.0.0.1:1`, no exception to the UI).
 - `.gitignore` excludes `.venv/`, `node_modules/`, `__pycache__/`, secrets, IDE folders, zips, and build artifacts.
-- Dependencies are declared in `requirements.txt` only (Streamlit, pypdf, pyflakes). No vendored libraries.
+- Dependencies are declared in `requirements.txt` only (Streamlit, pypdf). `pyflakes` is optional for local lint. No vendored libraries.
 
 ## Project layout
 
@@ -108,7 +108,7 @@ Before every push:
 
 ```bash
 python -m unittest discover -s tests -v
-python -m pyflakes plainpath tests app.py
+python -m pyflakes plainpath tests app.py   # optional; pip install pyflakes
 git ls-files | grep -E '\.venv/|node_modules/|\.idea/|\.DS_Store'
 ```
 
