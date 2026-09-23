@@ -189,6 +189,7 @@ class OpenAICompatibleLLM:
         model: str,
         timeout_s: float,
         fallback_models: tuple[str, ...] = (),
+        extra_body: dict | None = None,
     ) -> None:
         self._label = provider_label
         self._base_url = base_url.rstrip("/")
@@ -196,6 +197,7 @@ class OpenAICompatibleLLM:
         self._model = model
         self._timeout_s = timeout_s
         self._fallback_models = fallback_models
+        self._extra_body = extra_body or {}
 
     def name(self) -> str:
         return f"{self._label}:{self._model}"
@@ -242,11 +244,13 @@ class OpenAICompatibleLLM:
         payload = {
             "model": model,
             "temperature": float(temperature),
+            "max_completion_tokens": 1200,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
+        payload.update(self._extra_body)
         headers = {"Authorization": f"Bearer {self._api_key}"}
         data = _post_json(url, payload, timeout_s=self._timeout_s, headers=headers)
         return _openai_text(data)
@@ -366,6 +370,7 @@ def _groq_client(settings: Settings) -> OpenAICompatibleLLM:
         model=settings.groq_model,
         timeout_s=settings.llm_timeout_seconds,
         fallback_models=GROQ_FALLBACK_MODELS,
+        extra_body={"max_completion_tokens": 1200},
     )
 
 

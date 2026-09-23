@@ -7,6 +7,8 @@ import re
 
 from plainpath.types import RetrievedChunk
 
+MAX_QUESTION_CHARS = 400
+
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
 _STOP = {
     "the",
@@ -85,6 +87,7 @@ def retrieve(text: str, question: str, *, k: int = 4) -> tuple[RetrievedChunk, .
     Returns up to `k` chunks with score > 0, or the first chunk if nothing matches
     so the caller always has grounding text when the document is non-empty.
     """
+    question = (question or "")[:MAX_QUESTION_CHARS]
     chunks = chunk_document(text)
     if not chunks:
         return ()

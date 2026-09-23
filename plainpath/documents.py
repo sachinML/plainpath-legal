@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import io
 
 # Caps keep extraction linear-time on a Streamlit rerun and bound memory.
@@ -18,6 +19,14 @@ def clip_text(text: str, max_chars: int = MAX_DOC_CHARS) -> tuple[str, bool]:
     return text[:max_chars], True
 
 
+def safe_upload_name(filename: str) -> str:
+    """Keep the basename only so uploads cannot carry path segments."""
+    name = Path(filename or "").name.strip()
+    if not name or name in {".", ".."} or "\x00" in name:
+        raise ValueError("That file name is not allowed.")
+    return name
+
+
 def bytes_to_text(
     filename: str,
     payload: bytes,
@@ -30,7 +39,7 @@ def bytes_to_text(
         raise ValueError(
             f"That file is {len(payload)} bytes. PlainPath reads at most {max_bytes} bytes."
         )
-    lower = filename.lower()
+    lower = safe_upload_name(filename).lower()
     if not lower.endswith(ALLOWED_SUFFIXES):
         raise ValueError("Use a .txt, .md, or .pdf file.")
     if lower.endswith(".pdf"):

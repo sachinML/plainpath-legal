@@ -32,6 +32,11 @@ class TestRetrieve(unittest.TestCase):
         self.assertIn("rent", tokens)
         self.assertNotIn("the", tokens)
 
+    def test_long_question_is_clipped_not_rejected(self) -> None:
+        text = load_sample("Oakridge lease (sample A)")
+        chunks = retrieve(text, "deposit " * 400, k=2)
+        self.assertTrue(chunks)
+
 
 if __name__ == "__main__":
     unittest.main()

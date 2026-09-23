@@ -45,6 +45,13 @@ class TestDocumentLimits(unittest.TestCase):
     def test_decodes_plain_text(self) -> None:
         self.assertEqual(bytes_to_text("lease.txt", b"Rent is $10."), "Rent is $10.")
 
+    def test_rejects_path_segments_in_filename(self) -> None:
+        with self.assertRaises(ValueError):
+            bytes_to_text("../secrets.env", b"x")
+
+    def test_basename_is_used_for_nested_paths(self) -> None:
+        self.assertEqual(bytes_to_text("folder/sub/lease.txt", b"Rent is $10."), "Rent is $10.")
+
     def test_default_clip_bound_is_positive(self) -> None:
         self.assertGreater(MAX_DOC_CHARS, 1000)
 

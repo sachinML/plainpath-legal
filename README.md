@@ -89,6 +89,10 @@ On Streamlit Community Cloud, put the same names under **App settings → Secret
 - `.gitignore` excludes `.venv/`, `node_modules/`, `__pycache__/`, secrets, IDE folders, zips, and build artifacts.
 - Dependencies are declared in `requirements.txt` only (Streamlit, pypdf). `pyflakes` is optional for local lint. No vendored libraries.
 
+## Performance
+
+Lane A is linear regex over a clipped window (80k characters, 4 MB / 25 PDF pages). Fact sheets, compares, chunks, and Flesch scores are memoized (`functools.lru_cache` and `st.cache_data`). The workspace is a radio control, not tabs, so compare and retrieval do not run until that section is selected. Generate clicks run inside `st.fragment` so the document is not re-scanned. Groq calls set `max_completion_tokens`. There is no embedding model and no extra Cloud package.
+
 ## Project layout
 
 ```

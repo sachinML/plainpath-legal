@@ -30,6 +30,26 @@ _LANGUAGE_CODES = {"English": "en", "Spanish": "es", "Hindi": "hi"}
 
 st.set_page_config(page_title="PlainPath — legal documents in two lanes", layout="wide")
 
+_SECTIONS = (
+    "Simplify and scan",
+    "Compare A and B",
+    "Ask the document",
+    "Options and next steps",
+    "Lawyer briefing pack",
+    "How this maps to the challenge",
+)
+
+
+@st.cache_data(show_spinner=False, ttl=1800, max_entries=8)
+def _cached_analyze(text: str, today_iso: str, persona_id: str, source_name: str) -> Analysis:
+    """Memoize Lane A across Streamlit reruns. The model is never called here."""
+    return analyze_document(
+        text,
+        today=date.fromisoformat(today_iso),
+        persona_id=persona_id,
+        source_name=source_name,
+    )
+
 
 def _literacy(raw: str) -> Literacy:
     if raw.startswith("Plain"):
@@ -213,46 +233,37 @@ def main() -> None:
         if clipped_b:
             st.info(f"Document B was clipped to {MAX_DOC_CHARS:,} characters.")
 
-    analysis_key = (
+    analysis = _cached_analyze(
         doc_a,
         as_of.isoformat(),
         persona.id,
         st.session_state.get("doc_a_name", "Document A"),
     )
-    if st.session_state.get("_analysis_key") != analysis_key:
-        st.session_state._analysis = analyze_document(
-            doc_a,
-            today=as_of,
-            persona_id=persona.id,
-            source_name=st.session_state.get("doc_a_name", "Document A"),
-        )
-        st.session_state._analysis_key = analysis_key
-    analysis = st.session_state._analysis
     literacy = _literacy(literacy_raw)
 
-    tabs = st.tabs(
-        [
-            "Simplify and scan",
-            "Compare A and B",
-            "Ask the document",
-            "Options and next steps",
-            "Lawyer briefing pack",
-            "How this maps to the challenge",
-        ]
+    section = st.radio(
+        "Workspace section",
+        options=list(_SECTIONS),
+        index=0,
+        help="Only the selected section runs. Compare and retrieval stay idle until you open them.",
     )
 
-    with tabs[0]:
-        _tab_simplify(client, analysis, persona.id, literacy, language)
-    with tabs[1]:
-        _tab_compare(client, doc_a, doc_b, persona.id, literacy, language)
-    with tabs[2]:
-        _tab_ask(client, doc_a, persona, literacy, language)
-    with tabs[3]:
-        _tab_steps(client, analysis, persona.id, literacy, language)
-    with tabs[4]:
-        _tab_brief(client, analysis, persona, literacy, language)
-    with tabs[5]:
-        _tab_mapping()
+    @st.fragment
+    def _active_section() -> None:
+        if section == "Simplify and scan":
+            _tab_simplify(client, analysis, persona.id, literacy, language)
+        elif section == "Compare A and B":
+            _tab_compare(client, doc_a, doc_b, persona.id, literacy, language)
+        elif section == "Ask the document":
+            _tab_ask(client, doc_a, persona, literacy, language)
+        elif section == "Options and next steps":
+            _tab_steps(client, analysis, persona.id, literacy, language)
+        elif section == "Lawyer briefing pack":
+            _tab_brief(client, analysis, persona, literacy, language)
+        else:
+            _tab_mapping()
+
+    _active_section()
 
     _footer()
 
